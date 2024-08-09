@@ -1,0 +1,381 @@
+% preproceesing
+clc;
+clear all;
+
+location = fullfile("A:\Major_project A1\data\train");
+
+imds = imageDatastore(location,'IncludeSubfolders',true ,'LabelSource','foldernames');
+tbl = countEachLabel(imds);
+
+filepaths = imds.Files;
+[~,filenames] = fileparts(filepaths);
+dataLabels = extractBetween(filenames,12,15);
+
+dataCodeNames = ["3AA" "3AB" "1BB" "2BB"];
+dataNames = ["Good" "Good" "Poor" "Poor"];
+dataLabels = replace(dataLabels,dataCodeNames,dataNames);
+
+dataLabels = categorical(dataLabels);
+
+imds.Labels = dataLabels;
+
+figure
+histogram(dataLabels)
+title("Class Distribution")
+ylabel("Number of Observations")
+xlabel("Category")
+
+Plotting of sample images
+[imdsTrain,imdsTest] = splitEachLabel(imds,0.80,0.20);
+
+imdsTraincount = countEachLabel(imdsTrain);
+imdsTestcount = countEachLabel(imdsTest);
+
+
+imds = imageDatastore(location,'IncludeSubfolders',true,'LabelSource', 'foldernames');
+figure;
+numImages=6;
+for i = 1:numImages
+    img=readimage(imds,i);
+    subplot(2,3,i);
+    imshow(img);
+    title(["original image" imds.Labels(i)]);
+end
+
+Image Augmentation
+% Specify the path to your original image dataset
+originalDataFolder = 'A:\Major_project A1\data\train\poor';
+
+% Create an imageDatastore for the original dataset
+imds = imageDatastore(originalDataFolder, 'LabelSource', 'foldernames', 'IncludeSubfolders', true);
+
+numObservationsTrain = numel(imds.Files);
+
+numAugmentations = 11;
+augmenter = imageDataAugmenter(...
+    'RandRotation', [-10 10], ...
+    'RandXReflection', true, ...
+    'RandYReflection', true);
+
+augmentedDataFolder = fullfile('A:\Major_project A1\dataAugmenatation\Poor_embryo');
+%mkdir(augmentedDataFolder);
+
+reset(imds);
+
+numPartitions = 32;
+
+augmentationTimer = tic;
+
+parfor i = 1:numPartitions
+    
+    imdsPart = partition(imds, numPartitions, i);
+    
+    while hasdata(imdsPart)
+        [img, info] = read(imdsPart);
+        augmentedImages = augment(augmenter, img);
+        [~, name, ~] = fileparts(info.Filename);
+        
+        for n = 1:numAugmentations
+            imgAug = augmentedImages(:, :, :, mod(n, size(augmentedImages, 4)) + 1);
+            nameAug = strcat(name, '_aug', num2str(n));
+            filename = fullfile(augmentedDataFolder, strcat(nameAug, '.png'));
+            imwrite(imgAug, filename);
+        end
+        
+    end
+end
+
+toc(augmentationTimer);
+
+Model before augmentation
+location = fullfile('A:\Major_project A1\Dataset\Data');
+imds = imageDatastore(location,"IncludeSubfolders",true,'LabelSource','foldernames');
+
+[imdsTrain,imdsTest] = splitEachLabel(imds,0.80,0.20);
+
+
+filepaths = imds.Files;
+[~,filenames] = fileparts(filepaths);
+dataLabels = extractBetween(filenames,12,15);
+
+dataCodeNames = ["3AA" "3AB" "1BB" "2BB"];
+dataNames = ["Good" "Good" "Poor" "Poor"];
+dataLabels = replace(dataLabels,dataCodeNames,dataNames);
+
+dataLabels = categorical(dataLabels);
+
+imds.Labels = dataLabels;
+
+numClasses = numel(categories(dataLabels));
+
+%Layers
+lgraph = layerGraph();
+tempLayers = [
+    imageInputLayer([500 500 3],"Name","imageinput")
+    convolution2dLayer([3 3],32,"Name","conv","Padding","same")
+    batchNormalizationLayer("Name","batchnorm")
+    reluLayer("Name","relu")
+    convolution2dLayer([3 3],32,"Name","conv_1","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_1")
+    reluLayer("Name","relu_1")
+    maxPooling2dLayer([3 3],"Name","maxpool","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_2","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_2")
+    reluLayer("Name","relu_2")
+    convolution2dLayer([3 3],64,"Name","conv_3","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_3")
+    reluLayer("Name","relu_3")
+    maxPooling2dLayer([3 3],"Name","maxpool_1","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    convolution2dLayer([3 3],64,"Name","conv_4","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_4")
+    reluLayer("Name","relu_4")
+    convolution2dLayer([3 3],32,"Name","conv_6","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_6")
+    reluLayer("Name","relu_6")
+    maxPooling2dLayer([5 5],"Name","maxpool_2","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_9","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_9")
+    reluLayer("Name","relu_9")
+    maxPooling2dLayer([3 3],"Name","maxpool_4","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    convolution2dLayer([3 3],64,"Name","conv_5","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_5")
+    reluLayer("Name","relu_5")
+    convolution2dLayer([3 3],32,"Name","conv_7","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_7")
+    reluLayer("Name","relu_7")
+    maxPooling2dLayer([5 5],"Name","maxpool_3","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_10","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_10")
+    reluLayer("Name","relu_10")
+    maxPooling2dLayer([3 3],"Name","maxpool_5","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    depthConcatenationLayer(2,"Name","depthcat")
+    convolution2dLayer([3 3],64,"Name","conv_8","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_8")
+    reluLayer("Name","relu_8")
+    averagePooling2dLayer([5 5],"Name","avgpool2d","Padding","same")
+    convolution2dLayer([3 3],64,"Name","conv_11","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_11")
+    reluLayer("Name","relu_11")
+    averagePooling2dLayer([5 5],"Name","avgpool2d_1","Padding","same")
+    dropoutLayer(0.4,"Name","dropout")
+    flattenLayer("Name","flatten")
+    lstmLayer(128,"Name","lstm")
+    fullyConnectedLayer(2,"Name","fc")
+    softmaxLayer("Name","softmax")
+    classificationLayer("Name","classoutput")];
+lgraph = addLayers(lgraph,tempLayers);
+
+% clean up helper variable
+clear tempLayers;
+
+lgraph = connectLayers(lgraph,"maxpool_1","conv_4");
+lgraph = connectLayers(lgraph,"maxpool_1","conv_5");
+lgraph = connectLayers(lgraph,"maxpool_4","depthcat/in1");
+lgraph = connectLayers(lgraph,"maxpool_5","depthcat/in2");
+
+plot(lgraph);
+
+miniBatchSize = 16;
+
+options = trainingOptions("adam", ...
+    MaxEpochs=25, ...
+    MiniBatchSize=miniBatchSize, ...
+    InitialLearnRate=0.01, ...
+    LearnRateDropPeriod=5, ...
+    LearnRateSchedule="piecewise", ...
+    Shuffle="every-epoch", ...
+    Verbose=false, ...
+    Plots="training-progress");
+
+
+net99 = trainNetwork(imdsTrain,lgraph,options);
+
+save 'net99'
+
+%Testing
+YPred = classify(net99,imdsTest);
+YValidation = imdsTest.Labels;
+accuracy = mean(YPred == YValidation)
+figure
+plotconfusion(YValidation,YPred)
+
+Model after augmentation
+location = fullfile('A:\Major_project A1\DataAugment');
+imds = imageDatastore(location,"IncludeSubfolders",true,'LabelSource','foldernames');
+
+[imdsTrain,imdsTest] = splitEachLabel(imds,0.80,0.20);
+
+
+filepaths = imds.Files;
+[~,filenames] = fileparts(filepaths);
+dataLabels = extractBetween(filenames,12,15);
+
+dataCodeNames = ["3AA" "3AB" "1BB" "2BB"];
+dataNames = ["Good" "Good" "Poor" "Poor"];
+dataLabels = replace(dataLabels,dataCodeNames,dataNames);
+
+dataLabels = categorical(dataLabels);
+
+imds.Labels = dataLabels;
+
+numClasses = numel(categories(dataLabels));
+
+lgraph = layerGraph();
+tempLayers = [
+    imageInputLayer([500 500 3],"Name","imageinput")
+    convolution2dLayer([3 3],32,"Name","conv","Padding","same")
+    batchNormalizationLayer("Name","batchnorm")
+    reluLayer("Name","relu")
+    convolution2dLayer([3 3],32,"Name","conv_1","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_1")
+    reluLayer("Name","relu_1")
+    maxPooling2dLayer([3 3],"Name","maxpool","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_2","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_2")
+    reluLayer("Name","relu_2")
+    convolution2dLayer([3 3],64,"Name","conv_3","Padding","same")
+    batchNormalizationLayer("Name","batchnorm_3")
+    reluLayer("Name","relu_3")
+    maxPooling2dLayer([3 3],"Name","maxpool_1","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    convolution2dLayer([3 3],64,"Name","conv_4","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_4")
+    reluLayer("Name","relu_4")
+    convolution2dLayer([3 3],32,"Name","conv_6","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_6")
+    reluLayer("Name","relu_6")
+    maxPooling2dLayer([5 5],"Name","maxpool_2","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_9","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_9")
+    reluLayer("Name","relu_9")
+    maxPooling2dLayer([3 3],"Name","maxpool_4","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    convolution2dLayer([3 3],64,"Name","conv_5","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_5")
+    reluLayer("Name","relu_5")
+    convolution2dLayer([3 3],32,"Name","conv_7","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_7")
+    reluLayer("Name","relu_7")
+    maxPooling2dLayer([5 5],"Name","maxpool_3","Padding","same","Stride",[2 2])
+    convolution2dLayer([3 3],64,"Name","conv_10","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_10")
+    reluLayer("Name","relu_10")
+    maxPooling2dLayer([3 3],"Name","maxpool_5","Padding","same","Stride",[2 2])];
+lgraph = addLayers(lgraph,tempLayers);
+
+tempLayers = [
+    depthConcatenationLayer(2,"Name","depthcat")
+    convolution2dLayer([3 3],64,"Name","conv_8","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_8")
+    reluLayer("Name","relu_8")
+    averagePooling2dLayer([5 5],"Name","avgpool2d","Padding","same")
+    convolution2dLayer([3 3],64,"Name","conv_11","Padding","same","Stride",[2 2])
+    batchNormalizationLayer("Name","batchnorm_11")
+    reluLayer("Name","relu_11")
+    averagePooling2dLayer([5 5],"Name","avgpool2d_1","Padding","same")
+    dropoutLayer(0.4,"Name","dropout")
+    flattenLayer("Name","flatten")
+    lstmLayer(128,"Name","lstm")
+    fullyConnectedLayer(2,"Name","fc")
+    softmaxLayer("Name","softmax")
+    classificationLayer("Name","classoutput")];
+lgraph = addLayers(lgraph,tempLayers);
+
+% clean up helper variable
+clear tempLayers;
+
+lgraph = connectLayers(lgraph,"maxpool_1","conv_4");
+lgraph = connectLayers(lgraph,"maxpool_1","conv_5");
+lgraph = connectLayers(lgraph,"maxpool_4","depthcat/in1");
+lgraph = connectLayers(lgraph,"maxpool_5","depthcat/in2");
+
+plot(lgraph);
+
+miniBatchSize = 32;
+
+options = trainingOptions("adam", ...
+    MaxEpochs=20, ...
+    MiniBatchSize=miniBatchSize, ...
+    InitialLearnRate=0.001, ...
+    LearnRateDropPeriod=5, ...
+    LearnRateSchedule="piecewise", ...
+    Shuffle="every-epoch", ...
+    Verbose=false, ...
+    ValidationData=imdsValidation, ...
+    ValidationFrequency=15, ...
+    Plots="training-progress");
+
+
+net16 = trainNetwork(imdsTrain,lgraph,options);
+
+save 'net16'
+
+%testing before augmentation
+YPred = classify(net16,imdsTest);
+YValidation = imdsTest.Labels;
+accuracy = mean(YPred == YValidation);
+figure
+plotconfusion(YValidation,YPred)
+
+[~, scores] = classify(net16, imdsTest);
+dataLabels = imdsTest.Labels;
+Scores = scores;
+classNames = categories(imdsTest.Labels);
+rocObj = rocmetrics(dataLabels,scores,classNames);
+rocObj.AUC
+
+folderPath = 'A:\Major_project A1\Features\Train_Features';
+imageFiles = dir(fullfile(folderPath, '*.png'));
+destinationFolderPath = 'A:\Major_project A1\LIME\Output';
+if ~exist(destinationFolderPath, 'dir')
+    mkdir(destinationFolderPath);
+end
+
+LIME implementation
+inputSize = net16.Layers(1).InputSize(1:2);
+
+numImages = numel(imageFiles);
+scoreMaps = cell(1, numImages);
+
+for i = 1:length(imageFiles)
+    
+    originalImage = imread(fullfile(folderPath, imageFiles(i).name));
+    X = imresize(originalImage, inputSize);
+    label = classify(net16, X);
+    scoreMap = imageLIME(net16, X, label);
+    scoreMaps{i} = scoreMap;
+    
+    
+    filename = fullfile(destinationFolderPath,  ['LIME', imageFiles(i).name,'.png']);
+    
+    figure;
+    imshow(X);
+    hold on;
+    imagesc(scoreMap, 'AlphaData', 0.5);
+    colormap jet;
+    colorbar;
+    
+    title({
+        ['Actual Label: ', char(imdsTest.Labels(i))]
+        [' Predicted Label: ', char(label)]
+        });
+    
+    saveas(gcf, filename);
+    
+    close(gcf);
+end
+
+save(fullfile(destinationFolderPath, 'lime_score_maps.mat'), 'scoreMaps');
