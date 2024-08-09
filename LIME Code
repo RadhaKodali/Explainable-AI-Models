@@ -1,0 +1,35 @@
+LIME implementation
+inputSize = net16.Layers(1).InputSize(1:2);
+
+numImages = numel(imageFiles);
+scoreMaps = cell(1, numImages);
+
+for i = 1:length(imageFiles)
+    
+    originalImage = imread(fullfile(folderPath, imageFiles(i).name));
+    X = imresize(originalImage, inputSize);
+    label = classify(net16, X);
+    scoreMap = imageLIME(net16, X, label);
+    scoreMaps{i} = scoreMap;
+    
+    
+    filename = fullfile(destinationFolderPath,  ['LIME', imageFiles(i).name,'.png']);
+    
+    figure;
+    imshow(X);
+    hold on;
+    imagesc(scoreMap, 'AlphaData', 0.5);
+    colormap jet;
+    colorbar;
+    
+    title({
+        ['Actual Label: ', char(imdsTest.Labels(i))]
+        [' Predicted Label: ', char(label)]
+        });
+    
+    saveas(gcf, filename);
+    
+    close(gcf);
+end
+
+save(fullfile(destinationFolderPath, 'lime_score_maps.mat'), 'scoreMaps');
